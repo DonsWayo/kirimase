@@ -79,7 +79,10 @@ const generateImportStatement = (
     if (schema.includeTimestamps)
       usedTypes.push(generateTimestampFieldsDrizzle().importType);
 
+    if (schema.index) usedTypes.push("uniqueIndex");
+
     const uniqueTypes = getUniqueTypes(usedTypes, belongsToUser, dbType);
+
     return `${
       schema.includeTimestamps ? `import { sql } from "drizzle-orm";\n` : ""
     }import { ${uniqueTypes
@@ -183,7 +186,7 @@ const generateDrizzleSchema = (
   zodSchemas: string,
   authType: AuthType
 ) => {
-  const { tableName, fields } = schema;
+  const { tableName, fields, tablePrefix } = schema;
   const { tableNameCamelCase } = formatTableName(tableName);
 
   const importStatement = generateImportStatement(
@@ -198,9 +201,20 @@ const generateDrizzleSchema = (
   const userGeneratedFields = generateFieldsForSchema(fields, mappings);
   const indexFormatted = generateIndex(schema);
 
-  const drizzleSchemaContent = `export const ${tableNameCamelCase} = ${
-    mappings.tableFunc
-  }('${tableName}', {
+  const tableCreatorFunc = mappings.tableFunc;
+
+  const drizzleSchemaContent = `
+  /**
+ * This is an example of how to use the multi-project schema feature of Drizzle ORM. Use the same
+ * database instance for multiple projects.
+ *
+ * @see https://orm.drizzle.team/docs/goodies#multi-project-schema
+ */
+  // const createTable = ${tablePrefix ? `${tableCreatorFunc}((name) => "${tablePrefix}_"name)` : `${tableCreatorFunc}((t) => t)`};
+
+ const createTable = ${tablePrefix ? `${tableCreatorFunc}((name) => \`${tablePrefix}_\${name}\`)` : `${tableCreatorFunc}((name) => name)`};
+
+  export const ${tableNameCamelCase} = createTable('${tableName}', {
   id: ${mappings.typeMappings["id"]({ name: "id" })},
 ${userGeneratedFields}${addUserReferenceIfBelongsToUser(
     schema,
@@ -212,7 +226,7 @@ ${userGeneratedFields}${addUserReferenceIfBelongsToUser(
       : ""
   }
 }${indexFormatted});\n`;
-  // TODO TODO: ADD TIMESTAMPS HERE BETWEEN INDEX FORMATTED AND END CURLY
+  // TODO: ADD TIMESTAMPS HERE BETWEEN INDEX FORMATTED AND END CURLY
   return `${importStatement}\n\n${drizzleSchemaContent}\n\n${zodSchemas}`;
 };
 
@@ -301,7 +315,7 @@ const generateIndexFields = (
     .join("\n  ")}`;
 };
 
-const generatePrismaSchema = (
+const generatePrismaSchema = async (
   schema: Schema,
   mappings: TypeMap,
   zodSchemas: string,
@@ -333,22 +347,23 @@ const generatePrismaSchema = (
     schema.includeTimestamps ? generateTimestampFieldsPrisma() : ""
   }
 }`;
-  addToPrismaSchema(prismaSchemaContent, tableNameSingularCapitalised);
+  await addToPrismaSchema(prismaSchemaContent, tableNameSingularCapitalised);
   if (schema.belongsToUser && authSubtype === "self-hosted")
-    addToPrismaModel(
+    await addToPrismaModel(
       "User",
       `${tableNameCamelCase} ${tableNameSingularCapitalised}[]`
     );
 
-  relations.forEach((relation) => {
+  relations.forEach(async (relation) => {
     const { references } = relation;
     const { tableNameSingularCapitalised: singularCapitalised } =
       formatTableName(references);
-    addToPrismaModel(
+    await addToPrismaModel(
       singularCapitalised,
       `${tableNameCamelCase} ${tableNameSingularCapitalised}[]`
     );
   });
+
   const importStatement = generateImportStatement(
     "prisma",
     schema,
@@ -359,11 +374,11 @@ const generatePrismaSchema = (
   return `${importStatement}\n\n${zodSchemas}`;
 };
 
-export function generateModelContent(schema: Schema, dbType: DBType) {
+export async function generateModelContent(schema: Schema, dbType: DBType) {
   const { provider, orm, auth } = readConfigFile();
   const mappings = createOrmMappings()[orm][dbType];
   const zodSchemas = createZodSchemas(schema, orm);
-  if (schema.includeTimestamps) checkTimestampsInUtils();
+  if (schema.includeTimestamps) await checkTimestampsInUtils();
 
   if (orm === "drizzle") {
     return generateDrizzleSchema(
@@ -376,7 +391,7 @@ export function generateModelContent(schema: Schema, dbType: DBType) {
     );
   }
   if (orm === "prisma") {
-    return generatePrismaSchema(
+    return await generatePrismaSchema(
       schema,
       mappings,
       zodSchemas,

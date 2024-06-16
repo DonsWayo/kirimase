@@ -8,17 +8,20 @@ import {
   PMType,
 } from "../../types.js";
 import {
-  installPackages,
+  createFile,
   readConfigFile,
   replaceFile,
   updateConfigFile,
-  wrapInParenthesis,
 } from "../../utils.js";
 import { consola } from "consola";
 import { updateTsConfigPrismaTypeAlias } from "../add/orm/utils.js";
 import { addToInstallList } from "../add/utils.js";
 import { addNanoidToUtils } from "../add/orm/drizzle/utils.js";
-// test
+import {
+  format as prettierFormat,
+  resolveConfigFile,
+  resolveConfig as resolvePrettierConfig,
+} from "prettier";
 
 export const DBProviders: DBProviderOptions = {
   pg: [
@@ -27,11 +30,11 @@ export const DBProviders: DBProviderOptions = {
     { name: "Neon", value: "neon" },
     { name: "Vercel Postgres", value: "vercel-pg" },
     { name: "Supabase", value: "supabase" },
-    {
-      name: "AWS Data API",
-      value: "aws",
-      disabled: "(Not supported)",
-    },
+    // {
+    //   name: "AWS Data API",
+    //   value: "aws",
+    //   disabled: "(Not supported)",
+    // },
   ],
   mysql: [
     { name: "PlanetScale", value: "planetscale" },
@@ -47,7 +50,6 @@ export const DBProviders: DBProviderOptions = {
 export const checkForExistingPackages = async (rootPath: string) => {
   consola.start("Checking project for existing packages...");
   // get package json
-  const { preferredPackageManager } = readConfigFile();
   const packageJsonInitText = readFileSync("package.json", "utf-8");
 
   let configObj: Partial<Config> = {
@@ -58,6 +60,7 @@ export const checkForExistingPackages = async (rootPath: string) => {
     trpc: ["@trpc/client", "@trpc/react-query", "@trpc/server", "@trpc/next"],
     clerk: ["@clerk/nextjs"],
     lucia: ["lucia"],
+    supabase: ["@supabase/supabase-js", "@supabase/ssr"],
     prisma: ["prisma"],
     resend: ["resend"],
     stripe: ["stripe", "@stripe/stripe-js"],
@@ -74,6 +77,7 @@ export const checkForExistingPackages = async (rootPath: string) => {
     clerk: "auth",
     "next-auth": "auth",
     lucia: "auth",
+    supabase: "auth",
     drizzle: "orm",
   };
 
@@ -84,7 +88,6 @@ export const checkForExistingPackages = async (rootPath: string) => {
   };
   const dependenciesStringified = JSON.stringify(allDependencies);
   for (const [key, terms] of Object.entries(packages)) {
-    // console.log(key, terms);
     if (!terms) continue;
 
     // Loop over each term in the array
@@ -94,10 +97,6 @@ export const checkForExistingPackages = async (rootPath: string) => {
       if (dependenciesStringified.includes(term)) {
         // set object
         existsInProject = true;
-        // if (packageTypeMappings[key] !== null) {
-        //   configObj[packageTypeMappings[key]] = key;
-        //   configObj.packages.push(key as AvailablePackage);
-        // }
       }
     }
     if (existsInProject && packageTypeMappings[key] !== null)
@@ -189,39 +188,23 @@ export const checkForExistingPackages = async (rootPath: string) => {
 
   if (configObj.t3 === true) {
     if (configObj.orm === "prisma") {
-      // add zod generator to schema to schema.prisma
-      // consola.start(
-      //   "Installing zod-prisma for use with Kirimase's generate function."
-      // );
-      addToInstallList({ regular: [], dev: ["zod-prisma"] });
-      // await installPackages(
-      //   { regular: "", dev: "zod-prisma" },
-      //   preferredPackageManager,
-      // );
-      addZodGeneratorToPrismaSchema();
-      // consola.success("Successfully installed!");
+      addToInstallList({ regular: [], dev: ["zod-prisma-types"] });
+
+      await addZodGeneratorToPrismaSchema();
 
       await updateTsConfigPrismaTypeAlias();
     } else if (configObj.orm === "drizzle") {
-      // consola.start(
-      //   "Installing drizzle-zod for use with Kirimase's generate function."
-      // );
-      // await installPackages(
-      //   { regular: "drizzle-zod", dev: "" },
-      //   preferredPackageManager
-      // );
       addToInstallList({ regular: ["drizzle-zod", "nanoid"], dev: [] });
-      addNanoidToUtils();
-      // consola.success("Successfully installed!");
+
+      await addNanoidToUtils();
     }
   }
-  // if (drizzle), check if using one schema file or schema directory - perhaps just force users?
 
   // update config file
-  updateConfigFile(configObj);
+  await updateConfigFile(configObj);
 };
 
-const addZodGeneratorToPrismaSchema = () => {
+const addZodGeneratorToPrismaSchema = async () => {
   const hasSchema = existsSync("prisma/schema.prisma");
   if (!hasSchema) {
     console.error("Prisma schema not found!");
@@ -229,18 +212,18 @@ const addZodGeneratorToPrismaSchema = () => {
   }
   const schema = readFileSync("prisma/schema.prisma", "utf-8");
   const newSchema = schema.concat(`
-generator zod {
-  provider              = "zod-prisma"
-  output                = "./zod"
-  relationModel         = true
-  modelCase             = "camelCase"
-  modelSuffix           = "Schema"
-  useDecimalJs          = true
-  prismaJsonNullability = true
-}
+    generator zod {
+      provider                  = "zod-prisma-types"
+      output                    = "./zod" 
+      createRelationValuesTypes = true
+      // modelCase             = "camelCase" 
+      // modelSuffix           = "Schema" 
+      // useDecimalJs          = true 
+      writeNullishInModelTypes  = true
+    }
 `);
 
-  replaceFile("prisma/schema.prisma", newSchema);
+  await replaceFile("prisma/schema.prisma", newSchema);
   consola.info("Updated Prisma schema");
 };
 
@@ -256,6 +239,76 @@ export const checkForPackageManager = (): PMType | null => {
   return null;
 };
 
+export const createPrettierConfigFileIfNotExist = async () => {
+  const userPrettierConfigPath = await resolveConfigFile();
+
+  if (!userPrettierConfigPath) {
+    consola.info(
+      "Prettier config not found! Create default prettier config for further usage..."
+    );
+
+    await createDefaultPrettierConfig();
+
+    return;
+  }
+
+  // Throws an error if there is an error during parsing the users prettier config file
+  let prettierConfig = await resolvePrettierConfig(userPrettierConfigPath);
+
+  if (prettierConfig != null)
+    consola.success(
+      "Prettier config found! Using prettier config for formatting..."
+    );
+
+  if (prettierConfig === null) {
+    consola.info(
+      "Prettier config not found! Create default prettier config for further usage..."
+    );
+
+    await createDefaultPrettierConfig();
+  }
+};
+
+export const formatFileContentWithPrettier = async (
+  content: string,
+  filePath: string,
+  skipPrettier?: boolean
+) => {
+  if (skipPrettier) return content;
+
+  const prettierConfigPath = await resolveConfigFile();
+
+  if (!prettierConfigPath) return content;
+
+  // Throws an error if there is an error during parsing the users prettier config file
+  const prettierConfig = await resolvePrettierConfig(prettierConfigPath);
+
+  if (
+    prettierConfig &&
+    typeof prettierConfig === "object" &&
+    !prettierConfig.filepath
+  )
+    prettierConfig.filepath = filePath;
+
+  return await prettierFormat(content, prettierConfig ?? undefined);
+};
+
+const createDefaultPrettierConfig = async () => {
+  /** @link https://prettier.io/docs/en/configuration#basic-configuration */
+  const defaultPrettierConfig = {
+    trailingComma: "es5" as const,
+    tabWidth: 4,
+    semi: false,
+    singleQuote: true,
+  };
+
+  await createFile(
+    ".prettierrc",
+    JSON.stringify(defaultPrettierConfig, null, 2),
+    true
+  );
+};
+
 export const toggleAnalytics = (input: { toggle?: boolean }) => {
   const { analytics } = readConfigFile();
 
@@ -268,4 +321,21 @@ export const toggleAnalytics = (input: { toggle?: boolean }) => {
       `Anonymous analytics are currently ${analytics ? "on" : "off"}`
     );
   }
+};
+
+const nextConfigPathOptions = [
+  "next.config.js",
+  "next.config.cjs",
+  "next.config.mjs",
+  "next.config.ts",
+] as const;
+
+export const hasNextConfigFile = () => {
+  for (const nextConfigPath of nextConfigPathOptions) {
+    if (existsSync(nextConfigPath)) {
+      return true;
+    }
+  }
+
+  return false;
 };

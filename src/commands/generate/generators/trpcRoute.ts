@@ -11,7 +11,6 @@ import fs from "fs";
 import { formatFilePath, getFilePaths } from "../../filePaths/index.js";
 
 export const scaffoldTRPCRoute = async (schema: Schema) => {
-  const { hasSrc } = readConfigFile();
   const { tableName } = schema;
   const { tableNameCamelCase } = formatTableName(tableName);
   const { trpc } = getFilePaths();
@@ -20,39 +19,13 @@ export const scaffoldTRPCRoute = async (schema: Schema) => {
     prefix: "rootPath",
     removeExtension: false,
   })}/${tableNameCamelCase}.ts`;
-  createFile(path, generateRouteContent(schema));
+  await createFile(path, generateRouteContent(schema));
 
-  updateTRPCRouter(tableNameCamelCase);
+  await updateTRPCRouter(tableNameCamelCase);
 };
 
-// function updateTRPCRouterOld(routerName: string): void {
-//   const { hasSrc } = readConfigFile();
-//   const filePath = `${hasSrc ? "src/" : ""}lib/server/routers/_app.ts`;
-//
-//   const fileContent = fs.readFileSync(filePath, "utf-8");
-//
-//   // Add import statement after the last import
-//   const importInsertionPoint = fileContent.lastIndexOf("import");
-//   const nextLineAfterLastImport =
-//     fileContent.indexOf("\n", importInsertionPoint) + 1;
-//   const beforeImport = fileContent.slice(0, nextLineAfterLastImport);
-//   const afterImport = fileContent.slice(nextLineAfterLastImport);
-//   const modifiedImportContent = `${beforeImport}import { ${routerName}Router } from "./${routerName}";\n${afterImport}`;
-//
-//   // Add router initialization before the last line in the router block
-//   const routerBlockEnd = modifiedImportContent.indexOf("});");
-//   const beforeRouterBlockEnd =
-//     modifiedImportContent.lastIndexOf(",", routerBlockEnd) + 1;
-//   const beforeRouter = modifiedImportContent.slice(0, beforeRouterBlockEnd);
-//   const afterRouter = modifiedImportContent.slice(beforeRouterBlockEnd);
-//   const modifiedRouterContent = `${beforeRouter}\n  ${routerName}: ${routerName}Router,${afterRouter}`;
-//   replaceFile(filePath, modifiedRouterContent);
-//
-//   consola.success(`Added ${routerName} router to root router successfully.`);
-// }
-
-export function updateTRPCRouter(routerName: string): void {
-  const { hasSrc, t3, rootPath } = readConfigFile();
+export async function updateTRPCRouter(routerName: string) {
+  const { t3, rootPath } = readConfigFile();
   const { trpcRootDir, rootRouterRelativePath } = getFileLocations();
   const filePath = rootPath.concat(`${trpcRootDir}${rootRouterRelativePath}`);
 
@@ -73,7 +46,7 @@ export function updateTRPCRouter(routerName: string): void {
     }${routerName}";\n`;
     const withNewImport = `${beforeImport}${newImportStatement}${afterImport}`;
 
-    let modifiedRouterContent = "";
+    let modifiedRouterContent: string | undefined = "";
 
     if (withNewImport.includes("router({})")) {
       // Handle empty router
@@ -98,22 +71,18 @@ export function updateTRPCRouter(routerName: string): void {
       modifiedRouterContent = withNewImport.replace(oldRouter, newRouter);
     } else {
       // Regular multi-line router
-      const routerBlockEnd = withNewImport.indexOf("});");
+      const routerBlockEnd = withNewImport.indexOf("})");
       const beforeRouterBlockEnd = withNewImport.lastIndexOf(
         "\n",
         routerBlockEnd
       );
       const beforeRouter = withNewImport.slice(0, beforeRouterBlockEnd);
+      const hasCommaBefore = beforeRouter.endsWith(",");
       const afterRouter = withNewImport.slice(beforeRouterBlockEnd);
       const newRouterStatement = `\n  ${routerName}: ${routerName}Router,`;
-      modifiedRouterContent = `${beforeRouter}${newRouterStatement}${afterRouter}`;
+      modifiedRouterContent = `${beforeRouter}${hasCommaBefore ? "" : ","}${newRouterStatement}${afterRouter}`;
     }
-
-    replaceFile(filePath, modifiedRouterContent);
-
-    // consola.success(
-    //   `Added '${routerName}' router to the root tRPC router successfully.`
-    // );
+      await replaceFile(filePath, modifiedRouterContent);
   }
 }
 
@@ -125,7 +94,6 @@ const generateRouteContent = (schema: Schema) => {
     tableNameCamelCase,
     tableNameCapitalised,
   } = formatTableName(tableName);
-  const { alias } = readConfigFile();
   const { createRouterInvokcation } = getFileLocations();
   const { shared, trpc } = getFilePaths();
 

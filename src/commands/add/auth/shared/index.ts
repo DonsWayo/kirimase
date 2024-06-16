@@ -1,9 +1,4 @@
-import { consola } from "consola";
-import {
-  createFile,
-  installShadcnUIComponents,
-  readConfigFile,
-} from "../../../../utils.js";
+import { createFile, readConfigFile } from "../../../../utils.js";
 import { addToShadcnComponentList } from "../../utils.js";
 import {
   createAccountApiTs,
@@ -12,10 +7,9 @@ import {
   createUserSettingsComponent,
   createUpdateNameCard,
   createUpdateEmailCard,
-  createNavbar,
   createSignOutBtn,
 } from "./generators.js";
-import { AuthType, ORMType } from "../../../../types.js";
+import { AuthType } from "../../../../types.js";
 import { formatFilePath, getFilePaths } from "../../../filePaths/index.js";
 import {
   enableSessionInContext,
@@ -26,9 +20,10 @@ export const createAccountSettingsPage = async () => {
   const { orm, rootPath, componentLib, auth } = readConfigFile();
   const { shared } = getFilePaths();
   const withShadCn = componentLib === "shadcn-ui" ? true : false;
-  // create account api - clerk has managed component so no need
-  if (auth !== "clerk" && auth !== "lucia") {
-    createFile(
+
+  // create account api - clerk has managed components so no need - supabase has its own client to update user details
+  if (auth !== "supabase" && auth !== "clerk" && auth !== "lucia") {
+    await createFile(
       formatFilePath(shared.auth.accountApiRoute, {
         prefix: "rootPath",
         removeExtension: false,
@@ -38,7 +33,7 @@ export const createAccountSettingsPage = async () => {
   }
 
   // create account page
-  createFile(
+  await createFile(
     formatFilePath(shared.auth.accountPage, {
       prefix: "rootPath",
       removeExtension: false,
@@ -47,7 +42,7 @@ export const createAccountSettingsPage = async () => {
   );
 
   // create usersettings component
-  createFile(
+  await createFile(
     formatFilePath(shared.auth.userSettingsComponent, {
       prefix: "rootPath",
       removeExtension: false,
@@ -64,8 +59,9 @@ export const scaffoldAccountSettingsUI = async (
   auth: AuthType
 ) => {
   const { shared, lucia } = getFilePaths();
+
   // create updatenamecard
-  createFile(
+  await createFile(
     formatFilePath(shared.auth.updateNameCardComponent, {
       prefix: "rootPath",
       removeExtension: false,
@@ -74,7 +70,7 @@ export const scaffoldAccountSettingsUI = async (
   );
 
   // create updatenamecard
-  createFile(
+  await createFile(
     formatFilePath(shared.auth.updateEmailCardComponent, {
       prefix: "rootPath",
       removeExtension: false,
@@ -83,7 +79,7 @@ export const scaffoldAccountSettingsUI = async (
   );
 
   // create accountcard components
-  createFile(
+  await createFile(
     formatFilePath(shared.auth.accountCardComponent, {
       prefix: "rootPath",
       removeExtension: false,
@@ -91,17 +87,8 @@ export const scaffoldAccountSettingsUI = async (
     createAccountCardComponent(withShadCn)
   );
 
-  // create navbar component
-  // createFile(
-  //   formatFilePath(shared.init.navbarComponent, {
-  //     prefix: "rootPath",
-  //     removeExtension: false,
-  //   }),
-  //   createNavbar(withShadCn, auth === "clerk", auth)
-  // );
-
   // TODO FIX THIS
-  if (withShadCn && auth !== "lucia") {
+  if (withShadCn && auth !== "lucia" && auth !== "supabase") {
     createFile(
       formatFilePath(lucia.signOutButtonComponent, {
         prefix: "rootPath",
@@ -110,21 +97,17 @@ export const scaffoldAccountSettingsUI = async (
       createSignOutBtn()
     );
   }
-  // add navbar to root layout
-  // addContextProviderToLayout("Navbar");
   if (withShadCn) {
-    // consola.start("Installing Card component for account page...");
-    // await installShadcnUIComponents(["card"]);
     addToShadcnComponentList(["card"]);
   }
 };
 
-export const updateTrpcWithSessionIfInstalled = () => {
+export const updateTrpcWithSessionIfInstalled = async () => {
   const { packages, t3 } = readConfigFile();
   if (packages.includes("trpc")) {
     if (!t3) {
-      updateTrpcTs();
-      enableSessionInContext();
+      await updateTrpcTs();
+      await enableSessionInContext();
     }
   }
 };

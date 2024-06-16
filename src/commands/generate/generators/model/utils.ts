@@ -1,13 +1,17 @@
-import { existsSync, readFileSync } from "fs";
+import { AuthType } from "../../../../types.js";
 import { createFile, readConfigFile, replaceFile } from "../../../../utils.js";
+import { existsSync, readFileSync } from "fs";
 import { ORMTypeMap, TypeMap } from "../../types.js";
 import {
   formatTableName,
   getReferenceFieldType,
   toCamelCase,
 } from "../../utils.js";
-import { formatFilePath, getFilePaths } from "../../../filePaths/index.js";
-import { AuthType } from "../../../../types.js";
+import {
+  formatFilePath,
+  getDbIndexPath,
+  getFilePaths,
+} from "../../../filePaths/index.js";
 
 export const prismaMappings = {
   typeMappings: {
@@ -44,7 +48,7 @@ export const createOrmMappings = () => {
   return {
     drizzle: {
       pg: {
-        tableFunc: "pgTable",
+        tableFunc: "pgTableCreator",
         typeMappings: {
           id: ({ name }) =>
             `varchar("${name}", { length: 191 }).primaryKey().$defaultFn(() => nanoid())`,
@@ -71,7 +75,7 @@ export const createOrmMappings = () => {
         },
       },
       mysql: {
-        tableFunc: "mysqlTable",
+        tableFunc: "mysqlTableCreator",
         typeMappings: {
           id: ({ name }) =>
             `varchar("${name}", { length: 191 }).primaryKey().$defaultFn(() => nanoid())`,
@@ -101,7 +105,7 @@ export const createOrmMappings = () => {
         },
       },
       sqlite: {
-        tableFunc: "sqliteTable",
+        tableFunc: "sqliteTableCreator",
         typeMappings: {
           id: ({ name }) =>
             `text("${name}").primaryKey().$defaultFn(() => nanoid())`,
@@ -144,7 +148,7 @@ export const authForWhereClausePrisma = (belongsToUser: boolean) => {
   return belongsToUser ? ", userId: session?.user.id!" : "";
 };
 
-export const updateRootSchema = (
+export const updateRootSchema = async (
   tableName: string,
   usingAuth?: boolean,
   auth?: AuthType
@@ -165,6 +169,8 @@ export const updateRootSchema = (
       break;
     case "kinde":
       break;
+    case "supabase":
+      break;
     case "lucia":
       tableNames = "keys, users, sessions";
       break;
@@ -176,6 +182,7 @@ export const updateRootSchema = (
 
   // check if schema/_root.ts exists
   const rootSchemaExists = existsSync(rootSchemaPath);
+
   if (rootSchemaExists) {
     // if yes, import new model from model path and add to export -> perhaps replace 'export {' with 'export { new_model,'
     const rootSchemaContents = readFileSync(rootSchemaPath, "utf-8");
@@ -194,39 +201,51 @@ export const updateRootSchema = (
     const afterImport = rootSchemaWithNewExport.slice(nextLineAfterLastImport);
 
     const withNewImport = `${beforeImport}${newImportStatement}${afterImport}`;
-    replaceFile(rootSchemaPath, withNewImport);
+    await replaceFile(rootSchemaPath, withNewImport);
   } else {
     // if not create schema/_root.ts -> then do same import as above
-    createFile(
+    await createFile(
       rootSchemaPath,
       `${newImportStatement}
-
-export { ${usingAuth ? tableNames : tableNameCC} }`
+      export { ${usingAuth ? tableNames : tableNameCC} }`
     );
+
     // and also update db/index.ts to add extended model import
-    const indexDbPath = formatFilePath(drizzle.dbIndex, {
-      removeExtension: false,
-      prefix: "rootPath",
-    });
+    const indexDbPath = getDbIndexPath("drizzle");
     const indexDbContents = readFileSync(indexDbPath, "utf-8");
-    const updatedContentsWithImport = indexDbContents.replace(
-      `import * as schema from "./schema";`,
-      `import * as schema from "./schema";
-import * as extended from "~/server/db/schema/_root";`
-    );
-    const updatedContentsFinal = updatedContentsWithImport.replace(
-      `{ schema }`,
-      `{ schema: { ...schema, ...extended } }`
-    );
-    replaceFile(indexDbPath, updatedContentsFinal);
 
-    // update drizzle config file to add all in server/db/*
+    const lastImportStatement = indexDbContents.lastIndexOf("import");
+    const nextLineAfterLastImport =
+      indexDbContents.indexOf("\n", lastImportStatement) + 1;
+    const beforeImport = indexDbContents.slice(0, nextLineAfterLastImport);
+    const afterImport = indexDbContents.slice(nextLineAfterLastImport);
+    const withNewImport = `
+    ${beforeImport}\n
+    import * as schema from "${formatFilePath(drizzle.schemaAggregator, {
+      removeExtension: true,
+      prefix: "alias",
+    })}";\n${afterImport}`;
+
+    const updatedContentsWithImportAndSchema = withNewImport.replace(
+      "drizzle(conn)",
+      "drizzle(conn, { schema })"
+    );
+
+    const updatedContentsFinal = updatedContentsWithImportAndSchema.replace(
+      "const db",
+      "export const db"
+    );
+
+    await replaceFile(indexDbPath, updatedContentsFinal);
+
+    /* update drizzle config file to add all in server/db/*
     const drizzleConfigPath = "drizzle.config.ts";
     const dConfigContents = readFileSync(drizzleConfigPath, "utf-8");
+    // TODO: Check if user uses src directory or not
     const updatedContents = dConfigContents.replace(
       `schema: "./src/server/db/schema.ts",`,
       `schema: "./src/server/db/*",`
     );
-    replaceFile(drizzleConfigPath, updatedContents);
+    await replaceFile(drizzleConfigPath, updatedContents);*/
   }
 };

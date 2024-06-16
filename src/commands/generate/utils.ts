@@ -12,7 +12,6 @@ import { consola } from "consola";
 import { formatFilePath, getFilePaths } from "../filePaths/index.js";
 import { Schema } from "./types.js";
 
-import chalk from "chalk";
 import { TResource } from "./index.js";
 import { createNextStepsList, createNotesList } from "../add/utils.js";
 
@@ -330,7 +329,7 @@ export function getCurrentSchemas() {
   }
 }
 
-export const addToPrismaSchema = (schema: string, modelName: string) => {
+export const addToPrismaSchema = async (schema: string, modelName: string) => {
   const schemaPath = "prisma/schema.prisma";
   const schemaExists = existsSync(schemaPath);
   if (schemaExists) {
@@ -346,11 +345,11 @@ export const addToPrismaSchema = (schema: string, modelName: string) => {
         schemaContents.slice(0, modelStart) +
         schema +
         schemaContents.slice(modelEnd + 1);
-      replaceFile(schemaPath, newContent);
+      await replaceFile(schemaPath, newContent);
       // consola.success(`Replaced ${modelName} in Prisma schema`);
     } else {
       const newContent = schemaContents.concat("\n", schema);
-      replaceFile(schemaPath, newContent);
+      await replaceFile(schemaPath, newContent);
       // consola.success(`Added ${modelName} to Prisma schema`);
     }
   } else {
@@ -385,7 +384,10 @@ const getPrismaModelStartAndEnd = (schema: string, modelName: string) => {
   return { modelStart, modelEnd, modelExists };
 };
 
-export function addToPrismaModel(modelName: string, attributesToAdd: string) {
+export async function addToPrismaModel(
+  modelName: string,
+  attributesToAdd: string
+) {
   const hasSchema = existsSync("prisma/schema.prisma");
   if (!hasSchema) {
     console.error("Prisma schema not found!");
@@ -404,12 +406,12 @@ export function addToPrismaModel(modelName: string, attributesToAdd: string) {
 
     const newSchema =
       beforeModelEnd + "  " + attributesToAdd + "\n" + afterModelEnd;
-    replaceFile("prisma/schema.prisma", newSchema);
+    await replaceFile("prisma/schema.prisma", newSchema);
     consola.info("Updated Prisma schema");
   }
 }
 
-export function addToPrismaModelBulk(
+export async function addToPrismaModelBulk(
   modelName: string,
   attributesToAdd: string
 ) {
@@ -428,7 +430,7 @@ export function addToPrismaModelBulk(
 
     const newSchema =
       beforeModelEnd + "  " + attributesToAdd + "\n" + afterModelEnd;
-    replaceFile("prisma/schema.prisma", newSchema);
+    await replaceFile("prisma/schema.prisma", newSchema);
     consola.info("Updated Prisma schema");
   }
 }

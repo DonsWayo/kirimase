@@ -4,7 +4,7 @@ export type Paths = {
     migrationsDir: string;
     dbIndex: string;
     schemaTs?: string;
-    schemaAggregator?: string;
+    schemaAggregator: string;
   };
   prisma: { dbIndex: string };
   shared: {
@@ -23,6 +23,7 @@ export type Paths = {
       schemaDir?: string;
     };
     auth: {
+      authActions: string;
       authUtils: string;
       signInComponent: string;
       accountApiRoute: string;
@@ -32,7 +33,7 @@ export type Paths = {
       updateEmailCardComponent: string;
       accountCardComponent: string;
       layoutPage: string;
-      authSchema?: string;
+      authSchema: string | null;
     };
   };
   "next-auth": {
@@ -53,6 +54,15 @@ export type Paths = {
     libAuthLucia: string;
     signOutButtonComponent: string;
     formErrorComponent: string;
+  };
+  supabase: {
+    signInPage: string;
+    signUpPage: string;
+    authFormComponent: string;
+    callbackApiRoute: string;
+    libSupabaseAuthHelpers: string;
+    signOutButtonComponent: string;
+    middleware: string;
   };
   kinde: {
     routeHandler: string;

@@ -8,10 +8,11 @@
     "kirimase": "./dist/index.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "build": "npx tsc",
     "dev2": "node dist/index.js",
-    "dev": "tsc -w"
+    "dev": "tsc -w",
+    "reinstall": "bun run build && npm i -g .",
+    "createTesterApp": "rm -rf tester/ && bunx create-next-app@latest tester && cd tester/ && kirimase init"
   },
   "keywords": [
     "cli",
@@ -40,6 +41,7 @@
     "@typescript-eslint/eslint-plugin": "^6.6.0",
     "@typescript-eslint/parser": "^6.6.0",
     "eslint": "^8.48.0",
+    "prettier": "^3.2.5",
     "typescript": "^5.1.6"
   }
 }

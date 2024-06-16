@@ -15,11 +15,13 @@ program
   .action(toggleAnalytics);
 
 addCommonOptions(program.command("init"))
-  .description("initialise and configure kirimase within directory")
+  .alias("i")
+  .description("initialise and configure kirimase within a directory")
   .action(initProject);
 
 program
   .command("generate")
+  .alias("g")
   .description("Generate a new resource")
   .action(buildSchema);
 
@@ -43,7 +45,10 @@ function addCommonOptions(command: Command) {
     .option("-o, --orm <orm>", "preferred orm (prisma, drizzle)")
     .option("-db, --db <db>", "preferred database (pg, mysql, sqlite)")
     .option("-dbp, --db-provider <db>", "database provider")
-    .option("-a, --auth <auth>", "preferred auth (next-auth, clerk, lucia)")
+    .option(
+      "-a, --auth <auth>",
+      "preferred auth (next-auth, clerk, lucia, supabase)"
+    )
     .option(
       "-ap, --auth-providers <auth-providers...>",
       "auth providers (if using next-auth - discord, google, github, apple)"
